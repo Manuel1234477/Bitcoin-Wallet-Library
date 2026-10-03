@@ -28,6 +28,14 @@ pub enum WalletError {
     /// BDK refused to build the wallet from otherwise valid descriptors.
     #[error("wallet creation failed: {0}")]
     WalletCreation(String),
+
+    /// The chain backend failed (connection, RPC error, unexpected data).
+    #[error("backend error: {0}")]
+    Backend(String),
+
+    /// The backend's chain does not connect to the wallet's chain (e.g. wrong network).
+    #[error("sync failed: {0}")]
+    Sync(String),
 }
 
 /// Convenience alias used throughout the crate.
