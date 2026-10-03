@@ -8,8 +8,9 @@ use bdk_wallet::KeychainKind;
 use bdk_wallet::bitcoin::bip32::Xpriv;
 use bdk_wallet::bitcoin::secp256k1::Secp256k1;
 use bdk_wallet::bitcoin::{Network, NetworkKind};
-use bdk_wallet::descriptor::{DescriptorError, IntoWalletDescriptor};
+use bdk_wallet::descriptor::{DescriptorError, ExtendedDescriptor, IntoWalletDescriptor};
 use bdk_wallet::keys::KeyError;
+use bdk_wallet::miniscript::descriptor::KeyMap;
 use bdk_wallet::template::{Bip84, DescriptorTemplate};
 
 use crate::error::{Result, WalletError};
@@ -48,8 +49,14 @@ pub fn from_master_key(master: Xpriv, network: Network) -> Result<DescriptorPair
 
 /// Check that `descriptor` parses, matches `network`, and can derive many addresses.
 pub fn validate(descriptor: &str, network: Network) -> Result<()> {
+    parse(descriptor, network).map(|_| ())
+}
+
+/// Validate `descriptor` and split it into its public form and the private
+/// keys it contains (empty for a public-key descriptor).
+pub(crate) fn parse(descriptor: &str, network: Network) -> Result<(ExtendedDescriptor, KeyMap)> {
     let secp = Secp256k1::new();
-    let (parsed, _) = descriptor
+    let (parsed, key_map) = descriptor
         .into_wallet_descriptor(&secp, NetworkKind::from(network))
         .map_err(map_descriptor_error)?;
 
@@ -60,7 +67,7 @@ pub fn validate(descriptor: &str, network: Network) -> Result<()> {
             "descriptor has no wildcard (`*`), so it cannot derive new addresses".into(),
         ));
     }
-    Ok(())
+    Ok((parsed, key_map))
 }
 
 pub(crate) fn map_descriptor_error(err: DescriptorError) -> WalletError {

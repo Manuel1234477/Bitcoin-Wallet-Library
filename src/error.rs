@@ -1,5 +1,6 @@
 //! Error type shared by every fallible operation in the library.
 
+use bdk_wallet::bitcoin::{Amount, FeeRate};
 use thiserror::Error;
 
 /// Errors returned by the wallet library.
@@ -36,6 +37,40 @@ pub enum WalletError {
     /// The backend's chain does not connect to the wallet's chain (e.g. wrong network).
     #[error("sync failed: {0}")]
     Sync(String),
+
+    /// The wallet's spendable outputs can't cover the amounts plus fee.
+    #[error("insufficient funds: need {needed}, have {available}")]
+    InsufficientFunds { needed: Amount, available: Amount },
+
+    /// A payment destination is unusable: no recipients, wrong network, or an
+    /// amount below the dust limit.
+    #[error("invalid recipient: {0}")]
+    InvalidRecipient(String),
+
+    /// Building the transaction failed for another reason.
+    #[error("transaction building failed: {0}")]
+    TxBuild(String),
+
+    /// A signer failed while signing the PSBT.
+    #[error("signing failed: {0}")]
+    Signing(String),
+
+    /// The transaction can't be fee-bumped: unknown, already confirmed, or
+    /// not replaceable.
+    #[error("fee bump failed: {0}")]
+    FeeBump(String),
+
+    /// A replacement transaction must pay at least `required` (BIP125).
+    #[error("fee rate too low: replacement needs at least {} sat/vB", required.to_sat_per_vb_ceil())]
+    FeeRateTooLow { required: FeeRate },
+
+    /// No fee estimate is available, or the confirmation target is invalid.
+    #[error("fee estimation failed: {0}")]
+    FeeEstimation(String),
+
+    /// The wallet holds no private keys, so it cannot sign.
+    #[error("wallet is watch-only and cannot sign")]
+    WatchOnly,
 }
 
 /// Convenience alias used throughout the crate.

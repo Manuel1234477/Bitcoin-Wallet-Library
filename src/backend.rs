@@ -2,11 +2,11 @@
 //!
 //! [`ChainBackend`] is the only thing [`Wallet::sync`](crate::Wallet::sync)
 //! needs from the outside world: block hashes by height, full blocks, and the
-//! mempool. Reorg detection and applying data to the wallet happen in the
+//! mempool. It also submits transactions and estimates fees for spending. Reorg detection and applying data to the wallet happen in the
 //! wallet itself, so a backend is a thin, stateless data source and is easy to
 //! mock in tests.
 
-use bdk_wallet::bitcoin::{Block, BlockHash, Transaction, Txid};
+use bdk_wallet::bitcoin::{Amount, Block, BlockHash, FeeRate, Transaction, Txid};
 use bdk_wallet::chain::BlockId;
 use bitcoincore_rpc::{Client, RpcApi};
 
@@ -32,6 +32,13 @@ pub trait ChainBackend {
 
     /// Submit a signed transaction to the network.
     fn broadcast(&self, tx: &Transaction) -> Result<Txid>;
+
+    /// Fee rate expected to get a transaction confirmed within `target_blocks`
+    /// blocks.
+    ///
+    /// Returns [`WalletError::FeeEstimation`] when the backend has no estimate
+    /// (e.g. a fresh node that hasn't seen enough transactions).
+    fn estimate_fee(&self, target_blocks: u16) -> Result<FeeRate>;
 }
 
 /// [`ChainBackend`] backed by a Bitcoin Core node's JSON-RPC interface.
@@ -89,6 +96,22 @@ impl ChainBackend for BitcoindRpc {
     fn broadcast(&self, tx: &Transaction) -> Result<Txid> {
         self.client.send_raw_transaction(tx).map_err(backend_error)
     }
+
+    fn estimate_fee(&self, target_blocks: u16) -> Result<FeeRate> {
+        let estimate = self
+            .client
+            .estimate_smart_fee(target_blocks, None)
+            .map_err(backend_error)?;
+        match estimate.fee_rate {
+            Some(per_kvb) => Ok(fee_rate_from_btc_per_kvb(per_kvb)),
+            None => Err(WalletError::FeeEstimation(
+                estimate
+                    .errors
+                    .map(|errors| errors.join("; "))
+                    .unwrap_or_else(|| "no estimate available".into()),
+            )),
+        }
+    }
 }
 
 // Hand-written so RPC credentials never end up in logs.
@@ -96,6 +119,13 @@ impl std::fmt::Debug for BitcoindRpc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BitcoindRpc").field("url", &self.url).finish_non_exhaustive()
     }
+}
+
+/// Bitcoin Core reports fee rates in BTC per 1000 vbytes; `FeeRate` counts
+/// sats per 1000 weight units (1 vbyte = 4 wu). Rounds up so the rate is
+/// never below the estimate.
+fn fee_rate_from_btc_per_kvb(per_kvb: Amount) -> FeeRate {
+    FeeRate::from_sat_per_kwu(per_kvb.to_sat().div_ceil(4))
 }
 
 fn backend_error(err: bitcoincore_rpc::Error) -> WalletError {
@@ -108,4 +138,19 @@ fn is_not_found(err: &bitcoincore_rpc::Error) -> bool {
         err,
         bitcoincore_rpc::Error::JsonRpc(bitcoincore_rpc::jsonrpc::Error::Rpc(e)) if e.code == -5
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_core_fee_rate() {
+        // 0.00001 BTC/kvB = 1000 sat/kvB = 1 sat/vB.
+        let rate = fee_rate_from_btc_per_kvb(Amount::from_sat(1_000));
+        assert_eq!(rate, FeeRate::from_sat_per_vb(1).unwrap());
+        // 0.00002345 BTC/kvB rounds up rather than down.
+        let rate = fee_rate_from_btc_per_kvb(Amount::from_sat(2_345));
+        assert_eq!(rate.to_sat_per_kwu(), 587);
+    }
 }

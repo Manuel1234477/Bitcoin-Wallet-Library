@@ -42,6 +42,9 @@ pub struct Utxo {
     /// Derivation index of the owning address on `keychain`.
     pub derivation_index: u32,
     pub confirmation: Confirmation,
+    /// Selected by a built transaction that hasn't been broadcast or
+    /// cancelled yet, so new transactions won't spend it.
+    pub reserved: bool,
 }
 
 impl From<bdk_wallet::LocalOutput> for Utxo {
@@ -52,6 +55,7 @@ impl From<bdk_wallet::LocalOutput> for Utxo {
             keychain: output.keychain,
             derivation_index: output.derivation_index,
             confirmation: output.chain_position.into(),
+            reserved: false,
         }
     }
 }
