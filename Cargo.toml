@@ -2,6 +2,14 @@
 name = "wallet-library"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "A small BDK-based Bitcoin wallet library: mnemonic/descriptor wallets, sync through a pluggable chain backend, PSBT building, signing, fee bumping and broadcast"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Manuel1234477/Bitcoin-Wallet-Library"
+readme = "README.md"
+keywords = ["bitcoin", "wallet", "bdk", "psbt", "descriptor"]
+categories = ["cryptography::cryptocurrencies"]
+exclude = ["examples/"]
 
 [dependencies]
 bdk_wallet = { version = "3.2", features = ["keys-bip39"] }
